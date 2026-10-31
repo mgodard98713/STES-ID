@@ -1298,5 +1298,110 @@ function closeModalOnOverlay(e) {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 </script>
 
+<!-- =====================================================================
+     Liens Cartographie <-> Trombinoscope Espadon
+     A coller juste AVANT la balise </body> de chaque page de cartographie.
+     Seule la ligne TROMBI_D change d'une page a l'autre :
+       - cartographie-stes-id.html  -> var TROMBI_D = 82;  (Trombinoscope - Insularites Durables)
+       - cartographie odd.html      -> var TROMBI_D = 81;  (Trombinoscope - Ocean et Defis Durables)
+     ===================================================================== -->
+<style>
+  .trombi-link{color:inherit;text-decoration:underline dotted;text-underline-offset:2px}
+  .trombi-link:hover{text-decoration:underline}
+  .trombi-chip-link{margin-left:8px;font-size:.8em;font-weight:600;white-space:nowrap}
+  .ue-card.ue-highlight{outline:3px solid #f2b705;outline-offset:3px;animation:ueflash 1.2s ease 2}
+  @keyframes ueflash{50%{outline-color:transparent}}
+</style>
+<script>
+(function () {
+  var TROMBI_D = 82; /* 82 = Insularites Durables ; 81 = Ocean et Defis Durables */
+  var TROMBI = 'https://espadon.upf.pf/mod/data/view.php?d=' + TROMBI_D +
+               '&perpage=100&advanced=0&filter=1&search=';
+
+  function norm(s) {
+    return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function cleanName(n) { return (n || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim(); }
+  function surname(n) { var p = cleanName(n).split(' '); return p.length > 1 ? p.slice(1).join(' ') : ''; }
+  function isPerson(n) { return surname(n) && !/d[\u00e9e]finir|recrutement/i.test(n); }
+  function trombiUrl(n) { return TROMBI + encodeURIComponent(surname(n)); }
+
+  /* 1. Noms des enseignants cliquables sur les cartes */
+  document.querySelectorAll('.ue-teacher').forEach(function (t) {
+    var parts = t.textContent.split('\u00b7');
+    t.textContent = '';
+    parts.forEach(function (p, i) {
+      if (i) t.appendChild(document.createTextNode(' \u00b7 '));
+      if (isPerson(p)) {
+        var a = document.createElement('a');
+        a.href = trombiUrl(p); a.target = '_top'; a.className = 'trombi-link';
+        a.title = 'Voir dans le trombinoscope'; a.textContent = cleanName(p);
+        a.addEventListener('click', function (e) { e.stopPropagation(); });
+        t.appendChild(a);
+      } else {
+        t.appendChild(document.createTextNode(p.trim()));
+      }
+    });
+  });
+
+  /* 2. Lien "Trombinoscope" dans la fenetre du syllabus */
+  if (typeof window.openModal === 'function') {
+    var originalOpen = window.openModal;
+    window.openModal = function (id) {
+      originalOpen(id);
+      document.querySelectorAll('#modal-teachers .teacher-chip').forEach(function (chip) {
+        var n = chip.textContent.replace(/^[^A-Za-z\u00c0-\u00ff]+/, '').trim();
+        if (!isPerson(n) || chip.querySelector('.trombi-chip-link')) return;
+        var a = document.createElement('a');
+        a.href = trombiUrl(n); a.target = '_top'; a.className = 'trombi-chip-link';
+        a.textContent = 'Trombinoscope \u203a';
+        chip.appendChild(a);
+      });
+    };
+  }
+
+  /* 3. Ouverture directe d'un cours depuis le trombinoscope : #ue=Intitule&an=L1 */
+  function score(a, b) {
+    if (a === b) return 1;
+    if (a.indexOf(b) === 0 || b.indexOf(a) === 0) return 0.9;
+    var wa = a.split(' ').filter(function (w) { return w.length > 2; });
+    var wb = b.split(' ').filter(function (w) { return w.length > 2; });
+    if (!wa.length || !wb.length) return 0;
+    var common = wa.filter(function (w) { return wb.indexOf(w) > -1; }).length;
+    return common / Math.min(wa.length, wb.length) * 0.8;
+  }
+  function openFromHash() {
+    var h = decodeURIComponent(location.hash.replace(/^#/, ''));
+    var m = h.match(/ue=([^&]+)/); if (!m) return;
+    var an = (h.match(/an=(L\d)/i) || [])[1];
+    var target = norm(m[1]), best = null, bestScore = 0;
+    document.querySelectorAll('.ue-card').forEach(function (c) {
+      var nameEl = c.querySelector('.ue-name'), numEl = c.querySelector('.ue-num');
+      var txt = nameEl ? nameEl.textContent : '';
+      if (numEl && nameEl && nameEl.contains(numEl)) txt = txt.replace(numEl.textContent, '');
+      var s = score(norm(txt), target);
+      var panel = c.closest('.year-panel');
+      if (an && panel && panel.id === 'panel-' + an.toLowerCase()) s += 0.05;
+      if (s > bestScore) { bestScore = s; best = c; }
+    });
+    if (!best || bestScore < 0.5) return;
+    var panel = best.closest('.year-panel');
+    if (panel && !panel.classList.contains('active')) {
+      var key = panel.id.replace('panel-', '');
+      var btn = Array.prototype.find.call(document.querySelectorAll('[onclick]'), function (b) {
+        return /showYear/.test(b.getAttribute('onclick')) && b.getAttribute('onclick').indexOf("'" + key + "'") > -1;
+      });
+      if (btn) btn.click();
+    }
+    document.querySelectorAll('.ue-highlight').forEach(function (c) { c.classList.remove('ue-highlight'); });
+    best.classList.add('ue-highlight');
+    best.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (/openModal/.test(best.getAttribute('onclick') || '')) setTimeout(function () { best.click(); }, 500);
+  }
+  window.addEventListener('hashchange', openFromHash);
+  openFromHash();
+})();
+</script>
 </body>
 </html>
