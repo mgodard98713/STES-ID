@@ -464,4 +464,20 @@ function showYear(year, btn) {
   openFromHash();
 })();
 </script>
+<!-- Contacts : les liens email ouvrent le webmail UPF (Partage, connexion CAS) -->
+<script>
+(function () {
+  var WEBMAIL = 'https://webmail.upf.pf/?view=compose&to=';
+  function fixMailLinks() {
+    document.querySelectorAll('a[href^="mailto:"]').forEach(function (a) {
+      var to = a.getAttribute('href').replace(/^mailto:/i, '').split('?')[0];
+      a.href = WEBMAIL + encodeURIComponent(decodeURIComponent(to));
+      a.target = '_blank'; a.rel = 'noopener';
+      a.title = 'Écrire via la messagerie UPF : ' + decodeURIComponent(to);
+    });
+  }
+  fixMailLinks();
+  new MutationObserver(fixMailLinks).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
 </html>
